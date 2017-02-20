@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 2017
 ## Lab 0
 Please make sure your version is ahead of 185e932.
@@ -19,3 +20,6 @@ We also provide a testcase which is included in lab3/lab3\_test.zip.
 
 # Git
 If you are not familiar with Git, [this](http://backlogtool.com/git-guide/tw/intro/intro1_1.html) is the tutorial.
+=======
+# GPGPU-HW
+>>>>>>> 2271761414576af742f7221f39a50a8c0f6021dc
