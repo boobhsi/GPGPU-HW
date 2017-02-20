@@ -1,6 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
-#include "SyncedMemory.h"
+#include "../utils/SyncedMemory.h"
 
 #define CHECK {\
 	auto e = cudaDeviceSynchronize();\
@@ -25,7 +25,25 @@ __global__ void Draw(char *frame) {
 		} else if (y == 0 or y == H-1 or x == 0 or x == W-2) {
 			c = ':';
 		} else {
-			c = ' ';
+            bool element_drawed = false;
+            if (y <= 10 && y >= 5) {
+                if (x <= 21 && x >= 8+(10-y)*2) {
+                    c = '#';
+                    element_drawed = true;
+                } else if (x == 33) {
+                    if (y == 10) {
+                        c = '#';
+                        element_drawed = true;
+                    } else {
+                        c = '|';
+                        element_drawed = true;
+                    }
+                } else if (x == 32 && y == 5) {
+                    c = '<';
+                    element_drawed = true;
+                }
+            }
+			if (!element_drawed) c = ' ';
 		}
 		frame[y*W+x] = c;
 	}
