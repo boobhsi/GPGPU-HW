@@ -1,7 +1,9 @@
-<<<<<<< HEAD
 # 2017
 ## Lab 0
-Please make sure your version is ahead of 185e932.
+Please make sure your version is ahead of bf721d8.
+
+## Lab 1
+Please make sure your version is ahead of d7f67fc.
 
 # 2016
 In principle we do not forbid you to peek the homework of 2016
@@ -20,6 +22,3 @@ We also provide a testcase which is included in lab3/lab3\_test.zip.
 
 # Git
 If you are not familiar with Git, [this](http://backlogtool.com/git-guide/tw/intro/intro1_1.html) is the tutorial.
-=======
-# GPGPU-HW
->>>>>>> 2271761414576af742f7221f39a50a8c0f6021dc
