@@ -9,14 +9,12 @@
 
 #define BLOCK_SIZE 1024
 
-//__device__ __host__ int CeilDiv(int a, int b) { return (a-1)/b + 1; }
-//__device__ __host__ int CeilAlign(int a, int b) { return CeilDiv(a, b) * b; }
-
 __device__ __host__ bool CheckHead(const char* f, const char* c) {
     if(*f == '\n') if(*c != '\n') return true;
     if(*f != '\n') if(*c == '\n') return true;
     return false;
 }
+
 
 __global__ void ParallelScan(const char *text, int *pos, int text_size, int* aux) {
     const int x = threadIdx.x;
@@ -37,11 +35,6 @@ __global__ void ParallelScan(const char *text, int *pos, int text_size, int* aux
         flag[2 * x + 1] = 1;
     }
     else if(attCharIndex == text_size - 1) {
-        //if(bx != 0 && x == 0 && text[attCharIndex] != '\n') {
-        //printf("inhe.\n");
-        //    temp[0] = pos[attCharIndex - 1] + 1;
-        //}
-        //else
         temp[2 * x] = text[attCharIndex] == '\n' ? 0 : 1;
         temp[2 * x + 1] = 0;
 
@@ -53,11 +46,6 @@ __global__ void ParallelScan(const char *text, int *pos, int text_size, int* aux
 
     }
     else {
-        //if(bx != 0 && x == 0 && text[attCharIndex] != '\n') {
-        //printf("inhe.\n");
-        //    temp[0] = pos[attCharIndex - 1] + 1;
-        //}
-        //else
         temp[2 * x] = text[attCharIndex] == '\n' ? 0 : 1;
         temp[2 * x + 1] = text[attCharIndex + 1] == '\n' ? 0 : 1;
 
@@ -76,32 +64,8 @@ __global__ void ParallelScan(const char *text, int *pos, int text_size, int* aux
     oriTemp[2 * x] = temp[2 * x];
     oriTemp[2 * x + 1] = temp[2 * x + 1];
 
-    /*for test
-      __syncthreads();
-      if(x == 0 && bx == 0){
-      for(int i=0;i<text_size + 8;i++) {
-      printf("%d ", temp[i]);
-      }
-      printf("\n");
-      for(int i=0;i<text_size + 8;i++) {
-      printf("%d ", flag[i]);
-      }
-      printf("\n");
-      }
-     */
-
     for(int i=1024;i>0;i>>=1) {
         __syncthreads();
-
-        /*for test
-          if(x == 0 && bx == 0){
-          for(int j=0;j<text_size + 8;j++) {
-          printf("%d ", temp[j]);
-          }
-          printf("\n");
-          }
-         */
-
         if(x < i) {
             int ai = expo*(2*x+1) - 1;
             int bi = expo*(2*x+2) - 1;
@@ -116,16 +80,6 @@ __global__ void ParallelScan(const char *text, int *pos, int text_size, int* aux
     for(int i=1;i<2048;i*=2) {
         expo /= 2;
         __syncthreads();
-
-        /*for test
-          if(x == 0 && bx == 0){
-          for(int j=0;j<text_size + 8;j++) {
-          printf("%d ", temp[j]);
-          }
-          printf("\n");
-          }
-         */
-
         if(x < i) {
             int ai = expo*(2*x+1) - 1;
             int bi = expo*(2*x+2) - 1;
@@ -167,11 +121,6 @@ __global__ void ParallelScanAux(const char *text, int *pos, int text_size, int* 
         flag[2 * x + 1] = 1;
     }
     else if(attCharIndex == text_size - 1) {
-        //if(bx != 0 && x == 0 && text[attCharIndex] != '\n') {
-        //printf("inhe.\n");
-        //    temp[0] = pos[attCharIndex - 1] + 1;
-        //}
-        //else
         temp[2 * x] = aux[attCharIndex];
         temp[2 * x + 1] = 0;
 
@@ -185,11 +134,6 @@ __global__ void ParallelScanAux(const char *text, int *pos, int text_size, int* 
 
     }
     else {
-        //if(bx != 0 && x == 0 && text[attCharIndex] != '\n') {
-        //printf("inhe.\n");
-        //    temp[0] = pos[attCharIndex - 1] + 1;
-        //}
-        //else
         temp[2 * x] = aux[attCharIndex];
         temp[2 * x + 1] = aux[attCharIndex + 1];
 
@@ -214,32 +158,8 @@ __global__ void ParallelScanAux(const char *text, int *pos, int text_size, int* 
     oriTemp[2 * x] = temp[2 * x];
     oriTemp[2 * x + 1] = temp[2 * x + 1];
 
-    /*for test
-      __syncthreads();
-      if(x == 0 && bx == 0){
-      for(int i=0;i<text_size + 8;i++) {
-      printf("%d ", temp[i]);
-      }
-      printf("\n");
-      for(int i=0;i<text_size + 8;i++) {
-      printf("%d ", flag[i]);
-      }
-      printf("\n");
-      }
-     */
-
     for(int i=1024;i>0;i>>=1) {
         __syncthreads();
-
-        /*for test
-          if(x == 0 && bx == 0){
-          for(int j=0;j<text_size + 8;j++) {
-          printf("%d ", temp[j]);
-          }
-          printf("\n");
-          }
-         */
-
         if(x < i) {
             int ai = expo*(2*x+1) - 1;
             int bi = expo*(2*x+2) - 1;
@@ -254,15 +174,6 @@ __global__ void ParallelScanAux(const char *text, int *pos, int text_size, int* 
     for(int i=1;i<2048;i*=2) {
         expo /= 2;
         __syncthreads();
-
-        /*for test
-          if(x == 0 && bx == 0){
-          for(int j=0;j<text_size + 8;j++) {
-          printf("%d ", temp[j]);
-          }
-          printf("\n");
-          }
-         */
 
         if(x < i) {
             int ai = expo*(2*x+1) - 1;
@@ -294,17 +205,9 @@ void CountPosition1(const char *text, int *pos, int text_size)
 void CountPosition2(const char *text, int *pos, int text_size)
 {
     int *aux;
-    //int *cpuAux = new int[text_size];
     cudaMalloc(&aux, sizeof(int) * text_size);
     cudaMemset(aux, 0, sizeof(int) * text_size);
     ParallelScan<<<text_size/1024+1, 1024>>>(text, pos, text_size, aux);
     cudaDeviceSynchronize();
-    //	cudaMemcpy(cpuAux, aux, sizeof(int) * text_size, cudaMemcpyDeviceToHost);
-    //for(int i=2040;i<2060;i++) printf("%d ", cpuAux[i]);
-    //	printf("\n");
     ParallelScanAux<<<text_size/1024+1, 1024>>>(text, pos, text_size, aux);
-    //cudaDeviceSynchronize();
-    //cudaMemcpy(cpuAux, aux, sizeof(int) * text_size, cudaMemcpyDeviceToHost);
-    //for(int i=2040;i<2060;i++) printf("%d ", cpuAux[i]);
-    //	printf("\n");
 }
