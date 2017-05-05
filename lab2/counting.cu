@@ -9,14 +9,44 @@
 
 #define BLOCK_SIZE 1024
 
-__device__ __host__ bool CheckHead(const char* f, const char* c) {
+__device__ bool CheckHead(const char* f, const char* c) {
     if(*f == '\n') if(*c != '\n') return true;
     if(*f != '\n') if(*c == '\n') return true;
     return false;
 }
 
+__device__ void SegmentedScan(int* target, int* flag, int* oriFlag, const int tx) {
+    int expo = 1;
+    for(int i=BLOCK_SIZE;i>0;i>>=1) {
+        __syncthreads();
+        if(tx < i) {
+            int ai = expo*(2*tx+1) - 1;
+            int bi = expo*(2*tx+2) - 1;
+            if(flag[bi] == 0) target[bi] += target[ai];
+            flag[bi] |= flag[ai];
+        }
+        expo *= 2;
+    }
 
-__global__ void ParallelScan(const char *text, int *pos, int text_size, int* aux) {
+    if(tx == 0) target[BLOCK_SIZE * 2 - 1] = 0;
+
+    for(int i=1;i<BLOCK_SIZE*2;i*=2) {
+        expo /= 2;
+        __syncthreads();
+        if(tx < i) {
+            int ai = expo*(2*tx+1) - 1;
+            int bi = expo*(2*tx+2) - 1;
+            int tmp = target[ai];
+            target[ai] = target[bi];
+            if(oriFlag[ai + 1] == 1) target[bi] = 0;
+            else if(flag[ai] == 1) target[bi] = tmp;
+            else target[bi] += tmp;
+            flag[ai] = 0;
+        }
+    }
+}
+
+__global__ void ParallelScanWord(const char *text, int *pos, int text_size, int* aux) {
     const int x = threadIdx.x;
     const int bx = blockIdx.x;
     const int attCharIndex = bx * BLOCK_SIZE * 2 + 2 * x;
@@ -25,8 +55,6 @@ __global__ void ParallelScan(const char *text, int *pos, int text_size, int* aux
     __shared__ int oriTemp[2 * BLOCK_SIZE];
     __shared__ int flag[2 * BLOCK_SIZE];
     __shared__ int oriFlag[2 * BLOCK_SIZE];
-
-    int expo = 1;
 
     if(attCharIndex >= text_size) {
         temp[2 * x] = 0;
@@ -43,7 +71,6 @@ __global__ void ParallelScan(const char *text, int *pos, int text_size, int* aux
         else flag[2 * x] = 0;
 
         flag[2 * x + 1] = 1;
-
     }
     else {
         temp[2 * x] = text[attCharIndex] == '\n' ? 0 : 1;
@@ -55,7 +82,6 @@ __global__ void ParallelScan(const char *text, int *pos, int text_size, int* aux
 
         if(CheckHead(text + attCharIndex + 1, text + attCharIndex)) flag[2 * x + 1] = 1;
         else flag[2 * x + 1] = 0;
-
     }
 
     oriFlag[2 * x] = flag[2 * x];
@@ -64,33 +90,7 @@ __global__ void ParallelScan(const char *text, int *pos, int text_size, int* aux
     oriTemp[2 * x] = temp[2 * x];
     oriTemp[2 * x + 1] = temp[2 * x + 1];
 
-    for(int i=1024;i>0;i>>=1) {
-        __syncthreads();
-        if(x < i) {
-            int ai = expo*(2*x+1) - 1;
-            int bi = expo*(2*x+2) - 1;
-            if(flag[bi] == 0) temp[bi] += temp[ai];
-            flag[bi] |= flag[ai];
-        }
-        expo *= 2;
-    }
-
-    if(x == 0) temp[2047] = 0;
-
-    for(int i=1;i<2048;i*=2) {
-        expo /= 2;
-        __syncthreads();
-        if(x < i) {
-            int ai = expo*(2*x+1) - 1;
-            int bi = expo*(2*x+2) - 1;
-            int tmp = temp[ai];
-            temp[ai] = temp[bi];
-            if(oriFlag[ai + 1] == 1) temp[bi] = 0;
-            else if(flag[ai] == 1) temp[bi] = tmp;
-            else temp[bi] += tmp;
-            flag[ai] = 0;
-        }
-    }
+    SegmentedScan(temp, flag, oriFlag, x);
 
     if(attCharIndex < text_size) {
         pos[attCharIndex] = temp[2 * x] + oriTemp[2 * x];
@@ -112,7 +112,6 @@ __global__ void ParallelScanAux(const char *text, int *pos, int text_size, int* 
     __shared__ int flag[2 * BLOCK_SIZE];
     __shared__ int oriFlag[2 * BLOCK_SIZE];
 
-    int expo = 1;
 
     if(attCharIndex >= text_size) {
         temp[2 * x] = 0;
@@ -158,34 +157,7 @@ __global__ void ParallelScanAux(const char *text, int *pos, int text_size, int* 
     oriTemp[2 * x] = temp[2 * x];
     oriTemp[2 * x + 1] = temp[2 * x + 1];
 
-    for(int i=1024;i>0;i>>=1) {
-        __syncthreads();
-        if(x < i) {
-            int ai = expo*(2*x+1) - 1;
-            int bi = expo*(2*x+2) - 1;
-            if(flag[bi] == 0) temp[bi] += temp[ai];
-            flag[bi] |= flag[ai];
-        }
-        expo *= 2;
-    }
-
-    if(x == 0) temp[2047] = 0;
-
-    for(int i=1;i<2048;i*=2) {
-        expo /= 2;
-        __syncthreads();
-
-        if(x < i) {
-            int ai = expo*(2*x+1) - 1;
-            int bi = expo*(2*x+2) - 1;
-            int tmp = temp[ai];
-            temp[ai] = temp[bi];
-            if(oriFlag[ai + 1] == 1) temp[bi] = 0;
-            else if(flag[ai] == 1) temp[bi] = tmp;
-            else temp[bi] += tmp;
-            flag[ai] = 0;
-        }
-    }
+    SegmentedScan(temp, flag, oriFlag, x);
 
     if(attCharIndex < text_size) {
         pos[attCharIndex] += (temp[2 * x] + oriTemp[2 * x]);
@@ -207,7 +179,7 @@ void CountPosition2(const char *text, int *pos, int text_size)
     int *aux;
     cudaMalloc(&aux, sizeof(int) * text_size);
     cudaMemset(aux, 0, sizeof(int) * text_size);
-    ParallelScan<<<text_size/1024+1, 1024>>>(text, pos, text_size, aux);
+    ParallelScanWord<<<text_size/1024+1, 1024>>>(text, pos, text_size, aux);
     cudaDeviceSynchronize();
     ParallelScanAux<<<text_size/1024+1, 1024>>>(text, pos, text_size, aux);
 }
