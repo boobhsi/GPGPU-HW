@@ -5,8 +5,8 @@
 #include <cstdlib>
 #include <functional>
 #include <algorithm>
-#include "SyncedMemory.h"
-#include "Timer.h"
+#include "../utils/SyncedMemory.h"
+#include "../utils/Timer.h"
 #include "counting.h"
 using namespace std;
 
@@ -60,6 +60,15 @@ tuple<vector<char>, vector<int>> GenerateTestCase(Engine &eng, const int N) {
 	return ret;
 }
 
+void Veri(const int* yours, const int* golden, int n) {
+	
+	for(int i=0;i<n;i++) {
+		if(yours[i]!=golden[i]) cout<<i<<" ";
+
+}
+cout<<endl;
+}
+
 void TestRoutine(
 	SyncedMemory<int>& yours_sync, SyncedMemory<char>& text_sync,
 	const int n, const int part, const int *golden
@@ -80,8 +89,14 @@ void TestRoutine(
 	timer_count_position.Pause();
 
 	// Part I check
-	const int *yours = yours_sync.get_cpu_ro();
+	const int *yours = yours_sync.get_cpu_ro();	
+	
 	int n_match = mismatch(golden, golden+n, yours).first - golden;
+
+	for(int i=0;i<20;i++) cout<<yours[i]<<' ';
+	cout<<endl;
+
+Veri(yours, golden, n);
 
 	printf_timer(timer_count_position);
 	if (n_match != n) {
@@ -100,10 +115,14 @@ int main(int argc, char **argv)
 	vector<int> &pos = get<1>(text_pos_head);
 
 	// Prepare buffers
+
+	////char test[8] = {'a', 's', 'd', '\n', '\n', '\n', 'd', 'a'};
+	////int n = 8;
 	int n = text.size();
 	char *text_gpu;
 	cudaMalloc(&text_gpu, sizeof(char)*n);
 	SyncedMemory<char> text_sync(text.data(), text_gpu, n);
+	////SyncedMemory<char> text_sync(test, text_gpu, n);
 	text_sync.get_cpu_wo(); // touch the cpu data
 	MemoryBuffer<int> yours1_buf(n);
 	MemoryBuffer<int> yours2_buf(n);

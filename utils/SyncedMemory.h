@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cassert>
+#include <iostream>
 
 template <typename T>
 class SyncedMemory {
@@ -14,11 +15,14 @@ class SyncedMemory {
 
 	void Sync()
 	{
+                //std::cout<<"Sync!! : ";
 		switch (state_) {
 			case CPU_IS_NEW:
+				//std::cout<<"CPU to GPU\n";
 				cudaMemcpy(gpu_, cpu_, sizeof(T)*n_, cudaMemcpyHostToDevice);
 				break;
 			case GPU_IS_NEW:
+				//std::cout<<"GPU to CPU\n";
 				cudaMemcpy(cpu_, gpu_, sizeof(T)*n_, cudaMemcpyDeviceToHost);
 				break;
 		}
