@@ -9,6 +9,13 @@
 
 #define BLOCK_SIZE 1024
 
+#define NUM_BANKS 16
+#define LOG_NUM_BANKS 4
+
+#define CONFLICT_FREE_OFFSET(n) \
+	((n) >> NUM_BANKS + (n) >> (2 * LOG_NUM_BANKS))
+
+
 __device__ bool CheckHead(const char* f, const char* c) {
     if(*f == '\n') if(*c != '\n') return true;
     if(*f != '\n') if(*c == '\n') return true;
@@ -179,7 +186,7 @@ void CountPosition2(const char *text, int *pos, int text_size)
     int *aux;
     cudaMalloc(&aux, sizeof(int) * text_size);
     cudaMemset(aux, 0, sizeof(int) * text_size);
-    ParallelScanWord<<<text_size/1024+1, 1024>>>(text, pos, text_size, aux);
+    ParallelScanWord<<<text_size/BLOCK_SIZE/2+1, 1024>>>(text, pos, text_size, aux);
     cudaDeviceSynchronize();
-    ParallelScanAux<<<text_size/1024+1, 1024>>>(text, pos, text_size, aux);
+    ParallelScanAux<<<text_size/BLOCK_SIZE/2+1, 1024>>>(text, pos, text_size, aux);
 }
