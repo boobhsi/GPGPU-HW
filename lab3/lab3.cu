@@ -30,6 +30,7 @@ __global__ void SimpleClone(
 __global__ void PoissonImageCloningIteration(const float* fixed, const float* mask, float* input, float* output, int width, int height, int wb, int hb, int ox, int oy) {
     const int xt = blockIdx.x * blockDim.x + threadIdx.x;
     const int yt = blockIdx.y * blockDim.y + threadIdx.y;
+    if(xt >= width || yt >= height) return;
     const int oneChaDimIdx = (yt * width + xt);
     const int xb = xt + ox;
     const int yb = yt + oy;
@@ -109,6 +110,7 @@ __global__ void PoissonImageCloningIteration(const float* fixed, const float* ma
 __global__ void CalculateFixed(const float* background, const float* target, const float* mask, float* fixed, int wb, int hb, int wt, int ht, int oy, int ox) {
     const int xt = blockIdx.x * blockDim.x + threadIdx.x;
     const int yt = blockIdx.y * blockDim.y + threadIdx.y;
+    if(xt >= wt || yt >= ht) return;
     const int oneChaDimIdx = (yt * wt + xt);
     const int xb = xt + ox;
     const int yb = yt + oy;
@@ -214,26 +216,30 @@ __global__ void CalculateFixed(const float* background, const float* target, con
     }
 }
 
-__global__ ImageDownScaleSampling(float* input, float* output, int scale, int wt, int ht) {
+__global__ void ImageDownScaleSampling(const float* input, float* output, int scale, int wt, int ht, int channel) {
     const int xt = blockIdx.x * blockDim.x + threadIdx.x;
     const int yt = blockIdx.y * blockDim.y + threadIdx.y;
     const int afterW = wt / scale;
     const int afterH = ht / scale;
-    const int px = yt * afterW + xt;
-    const int samplePx = (yt * wt + xt) * scale
-    output[px] = input[samplePx];
+    if(xt >= afterW || yt >= afterH) return;
+    const int px = (yt * afterW + xt) * channel;
+    const int samplePx = ((yt * wt + xt) * scale) * channel;
+    for(int i=0;i<channel;i++) output[px+i] = input[samplePx+i];
 }
 
-__global__ ImageUpScaleInterpolating(float* input, float* output, int nwt, int nht) {
+__global__ void ImageUpScaleInterpolating(const float* input, float* output, int nwt, int nht, int channel) {
     const int xt = blockIdx.x * blockDim.x + threadIdx.x;
     const int yt = blockIdx.y * blockDim.y + threadIdx.y;
-    const int px = yt * nwt + xt;
-    const int aPx1 = yt * nwt * 4 * xt * 2;
-    const int aPx2 = aPx1 + nwt * 2;
-    output[aPx1] = input[px];
-    output[aPx1 + 1] = input[px];
-    output[aPx2] = input[px];
-    output[aPx2 + 1] = input[px];
+    if(xt >= nwt || yt >= nht) return;
+    const int px = (yt * nwt + xt) * channel;
+    const int aPx1 = (yt * nwt * 4 + xt * 2) * channel;
+    const int aPx2 = aPx1 + nwt * 2 * channel;
+    for(int i=0;i<channel;i++) {
+        output[aPx1+i] = input[px+i];
+        output[aPx1 + channel + i] = input[px+i];
+        output[aPx2 + i] = input[px+i];
+        output[aPx2 + channel + i] = input[px+i];
+    }
 }
 
 void PoissonImageCloning(
@@ -245,45 +251,83 @@ void PoissonImageCloning(
         const int oy, const int ox
         )
 {
-    float *fixed, *buf1, *buf2, *tempMask;
+    float *fixed, *buf1, *buf2, *tempMask, *upTempMask;
     cudaMalloc(&fixed, 3*wt*ht*sizeof(float));
     cudaMalloc(&buf1, 3*wt*ht*sizeof(float));
     cudaMalloc(&buf2, 3*wt*ht*sizeof(float));
     cudaMalloc(&tempMask, wt*ht*sizeof(float));
+    cudaMalloc(&upTempMask, wt*ht*sizeof(float));
 
-    dim3 gdim8(CeilDiv(wt/8, 32), CeilDiv(ht/8, 16));
-    dim3 gdim4(CeilDiv(wt/4, 32), CeilDiv(ht/4, 16));
-    dim3 gdim2(CeilDiv(wt/2, 32), CeilDiv(ht/2, 16));
-    dim3 gdim(CeilDiv(wt, 32), CeilDiv(ht, 16)), bdim(32, 16);
+    dim3 *gdim = new dim3[4];
+    gdim[0] = dim3(CeilDiv(wt/8, 32), CeilDiv(ht/8, 16));
+    //printf("%d, %d\n", wt/8, ht/8);
+    gdim[1] = dim3(CeilDiv(wt/4, 32), CeilDiv(ht/4, 16));
+    gdim[2] = dim3(CeilDiv(wt/2, 32), CeilDiv(ht/2, 16));
+    gdim[3] = dim3(CeilDiv(wt, 32), CeilDiv(ht, 16));
+    dim3 bdim(32, 16);
 
-    ImageDownScaleSampling(mask, tempMask, 8, wt, ht);
-    ImageDownScaleSampling(target, buf1, 8, wt, ht);
 
-    CalculateFixed<<<gdim, bdim>>>(
-            background, target, mask, fixed,
-            wb, hb, wt, ht, oy, ox
-            );
+    int testLimit = 4;
+    int start = 0; 
+    int scale;
 
-    cudaMemcpy(buf1, target, sizeof(float)*3*wt*ht, cudaMemcpyDeviceToDevice);
+    for(int i=start;i<testLimit;i++) {
 
-    for(int i=0; i<10000; i++) {
-        PoissonImageCloningIteration<<<gdim, bdim>>>(
-                fixed, mask, buf1, buf2, wt, ht, wb, hb, ox, oy
+        scale = 8 / powf(2, i);;
+	
+	//cudaMemset(tempMask, 0, wt*ht*sizeof(float));
+	//cudaMemset(buf1, 255, wt*ht*sizeof(float)*3);
+
+	if(i == start) ImageDownScaleSampling<<<gdim[i], bdim>>>(mask, tempMask, scale, wt, ht, 1);
+	else cudaMemcpy(tempMask, upTempMask, wt*ht*sizeof(float), cudaMemcpyDeviceToDevice);
+        if(i != 3) ImageDownScaleSampling<<<gdim[i], bdim>>>(target, buf1, scale, wt, ht, 3);
+
+        if(i != 3) {
+    	   CalculateFixed<<<gdim[i], bdim>>>(
+		background, buf1, tempMask, fixed,
+                wb, hb, wt/scale, ht/scale, oy, ox
                 );
-        PoissonImageCloningIteration<<<gdim, bdim>>>(
-                fixed, mask, buf2, buf1, wt, ht, wb, hb, ox, oy
+        }
+	else {
+	   CalculateFixed<<<gdim[i], bdim>>>(
+                background, target, tempMask, fixed,
+                wb, hb, wt, ht, oy, ox
                 );
+ 	}
+
+	if(i != start) {
+	    cudaMemcpy(buf1, buf2, wt*ht*sizeof(float)*3, cudaMemcpyDeviceToDevice);
+	}
+
+        for(int k=0; k<100 * powf(4, i); k++) {
+            PoissonImageCloningIteration<<<gdim[i], bdim>>>(
+                fixed, tempMask, buf1, buf2, wt/scale, ht/scale, wb, hb, ox, oy
+                );
+            PoissonImageCloningIteration<<<gdim[i], bdim>>>(
+                fixed, tempMask, buf2, buf1, wt/scale, ht/scale, wb, hb, ox, oy
+                );
+        }
+
+
+
+        if(i != testLimit - 1) {
+	    ImageUpScaleInterpolating<<<gdim[i], bdim>>>(buf1, buf2, wt/scale, ht/scale, 3);
+	    ImageUpScaleInterpolating<<<gdim[i], bdim>>>(tempMask, upTempMask, wt/scale, ht/scale, 1);
+	}
+
     }
 
-
-
     cudaMemcpy(output, background, wb*hb*sizeof(float)*3, cudaMemcpyDeviceToDevice);
-    SimpleClone<<<gdim, bdim>>>(
-            background, buf1, mask, output,
-            wb, hb, wt, ht, oy, ox
+
+    SimpleClone<<<gdim[testLimit - 1], bdim>>>(
+            background, buf1, tempMask, output,
+            wb, hb, wt/scale, ht/scale, oy, ox
             );
+
 
     cudaFree(fixed);
     cudaFree(buf1);
     cudaFree(buf2);
+    cudaFree(tempMask);
+    cudaFree(upTempMask);
 }
