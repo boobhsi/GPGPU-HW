@@ -47,25 +47,25 @@ __global__ void PoissonImageCloningIteration(const float* fixed, const float* ma
         if(xt == 0) {
             //no internal
         }
-        else if(mask[oneChaDimIdx - 1] > 127.0f) {
+        else if(mask[oneChaDimIdx - 1] > 127.0f && xb > 0) {
             answer += input[px - 3];
         }
         if(xt == width - 1) {
             //no internal
         }
-        else if(mask[oneChaDimIdx + 1] > 127.0f) {
+        else if(mask[oneChaDimIdx + 1] > 127.0f && xb < wb - 1) {
             answer += input[px + 3];
         }
         if(yt == 0) {
             //no internal
         }
-        else if(mask[oneChaDimIdx - width] > 127.0f) {
+        else if(mask[oneChaDimIdx - width] > 127.0f && yb > 0) {
             answer += input[px - width * 3];
         }
         if(yt == height - 1) {
             //no internal
         }
-        else if(mask[oneChaDimIdx + width] > 127.0f) {
+        else if(mask[oneChaDimIdx + width] > 127.0f && yb < hb - 1) {
             answer += input[px + width * 3];
         }
         output[px] = (answer + fixed[px]) / count;
@@ -121,7 +121,7 @@ __global__ void CalculateFixed(const float* background, const float* target, con
         float answer = 0.0f;
         //int count = 0;
         if(xt == 0) {
-            if(xb != 0) {
+            if(xb > 0) {
                 answer += target[px] - 255.0f;
                 answer += background[bpx - 3];
             }
@@ -131,7 +131,7 @@ __global__ void CalculateFixed(const float* background, const float* target, con
         }
         else {
             if(mask[oneChaDimIdx - 1] < 127.0f) {
-                if(xb != 0) {
+                if(xb > 0) {
                     answer += target[px] - target[px - 3];
                     answer += background[bpx - 3];
                 }
@@ -140,11 +140,11 @@ __global__ void CalculateFixed(const float* background, const float* target, con
                 }
             }
             else {
-                answer += target[px] - target[px - 3];
+                if(xb > 0) answer += target[px] - target[px - 3];
             }
         }
         if(xt == wt - 1) {
-            if(xb != wb - 1) {
+            if(xb < wb - 1) {
                 answer += target[px] - 255.0f;
                 answer += background[bpx + 3];
             }
@@ -154,7 +154,7 @@ __global__ void CalculateFixed(const float* background, const float* target, con
         }
         else {
             if(mask[oneChaDimIdx + 1] < 127.0f) {
-                if(xb != wb - 1) {
+                if(xb < wb - 1) {
                     answer += target[px] - target[px + 3];
                     answer += background[bpx + 3];
                 }
@@ -163,11 +163,11 @@ __global__ void CalculateFixed(const float* background, const float* target, con
                 }
             }
             else {
-                answer += target[px] - target[px + 3];
+                if(xb < wb - 1) answer += target[px] - target[px + 3];
             }
         }
         if(yt == 0) {
-            if(yb != 0) {
+            if(yb > 0) {
                 answer += target[px] - 255.0f;
                 answer += background[bpx - wb * 3];
             }
@@ -177,7 +177,7 @@ __global__ void CalculateFixed(const float* background, const float* target, con
         }
         else {
             if(mask[oneChaDimIdx - wt] < 127.0f) {
-                if(yb != 0) {
+                if(yb > 0) {
                     answer += target[px] - target[px - wt * 3];
                     answer += background[bpx - wb * 3];
                 }
@@ -186,11 +186,11 @@ __global__ void CalculateFixed(const float* background, const float* target, con
                 }
             }
             else {
-                answer += target[px] - target[px - wt * 3];
+                if(yb > 0) answer += target[px] - target[px - wt * 3];
             }
         }
         if(yt == ht - 1) {
-            if(yb != hb - 1) {
+            if(yb < hb - 1) {
                 answer += target[px] - 255.0f;
                 answer += background[bpx + wb * 3];
             }
@@ -200,7 +200,7 @@ __global__ void CalculateFixed(const float* background, const float* target, con
         }
         else {
             if(mask[oneChaDimIdx + wt] < 127.0f) {
-                if(yb != hb - 1) {
+                if(yb < hb - 1) {
                     answer += target[px] - target[px + wt * 3];
                     answer += background[bpx + wb * 3];
                 }
@@ -209,7 +209,7 @@ __global__ void CalculateFixed(const float* background, const float* target, con
                 }
             }
             else {
-                answer += target[px] - target[px + wt * 3];
+                if(yb < hb - 1) answer += target[px] - target[px + wt * 3];
             }
         }
         fixed[px] = answer;
@@ -251,6 +251,15 @@ void PoissonImageCloning(
         const int oy, const int ox
         )
 {
+
+    const int base = 500;
+    const bool linear = false;
+    const float pow = 5.0f;
+    const float bScale = 10.0f;
+    const int start = 0;
+    const int testLimit = 4;
+
+
     float *fixed, *buf1, *buf2, *tempMask, *upTempMask;
     cudaMalloc(&fixed, 3*wt*ht*sizeof(float));
     cudaMalloc(&buf1, 3*wt*ht*sizeof(float));
@@ -266,9 +275,11 @@ void PoissonImageCloning(
     gdim[3] = dim3(CeilDiv(wt, 32), CeilDiv(ht, 16));
     dim3 bdim(32, 16);
 
+    //if(linear) printf("linear mode\n");
+    //else printf("power mode\n");
 
-    int testLimit = 4;
-    int start = 0; 
+    //int testLimit = 4;
+    //int start = 0; 
     int scale;
 
     for(int i=start;i<testLimit;i++) {
@@ -278,11 +289,21 @@ void PoissonImageCloning(
 	//cudaMemset(tempMask, 0, wt*ht*sizeof(float));
 	//cudaMemset(buf1, 255, wt*ht*sizeof(float)*3);
 
-	if(i == start) ImageDownScaleSampling<<<gdim[i], bdim>>>(mask, tempMask, scale, wt, ht, 1);
+	if(testLimit == 4 && start == 3) ;//do nothing
+	else if(i == start) ImageDownScaleSampling<<<gdim[i], bdim>>>(mask, tempMask, scale, wt, ht, 1);
 	else cudaMemcpy(tempMask, upTempMask, wt*ht*sizeof(float), cudaMemcpyDeviceToDevice);
-        if(i != 3) ImageDownScaleSampling<<<gdim[i], bdim>>>(target, buf1, scale, wt, ht, 3);
+	
+	if(testLimit == 4 && start == 3) cudaMemcpy(buf1, target, wt*ht*3*sizeof(float), cudaMemcpyDeviceToDevice);
+        else if(i != 3) ImageDownScaleSampling<<<gdim[i], bdim>>>(target, buf1, scale, wt, ht, 3);
 
-        if(i != 3) {
+	
+	if(start == 3 && testLimit == 4) {
+	    CalculateFixed<<<gdim[3], bdim>>>(
+		background, target, mask, fixed,
+                wb, hb, wt, ht, oy, ox
+                );
+	}
+	else if(i != 3) {
     	   CalculateFixed<<<gdim[i], bdim>>>(
 		background, buf1, tempMask, fixed,
                 wb, hb, wt/scale, ht/scale, oy, ox
@@ -299,16 +320,14 @@ void PoissonImageCloning(
 	    cudaMemcpy(buf1, buf2, wt*ht*sizeof(float)*3, cudaMemcpyDeviceToDevice);
 	}
 
-        for(int k=0; k<100 * powf(4, i); k++) {
+	for(int k=0; k < (linear ? base * (i - start + 1) : base * (logf(i*bScale+1)/logf(pow)+1)/* powf(i, )*/); k++) {
             PoissonImageCloningIteration<<<gdim[i], bdim>>>(
-                fixed, tempMask, buf1, buf2, wt/scale, ht/scale, wb, hb, ox, oy
+                fixed, ((start == 3 && testLimit == 4) ? mask : tempMask), buf1, buf2, wt/scale, ht/scale, wb, hb, ox, oy
                 );
             PoissonImageCloningIteration<<<gdim[i], bdim>>>(
-                fixed, tempMask, buf2, buf1, wt/scale, ht/scale, wb, hb, ox, oy
+                fixed, ((start == 3 && testLimit == 4) ? mask : tempMask), buf2, buf1, wt/scale, ht/scale, wb, hb, ox, oy
                 );
         }
-
-
 
         if(i != testLimit - 1) {
 	    ImageUpScaleInterpolating<<<gdim[i], bdim>>>(buf1, buf2, wt/scale, ht/scale, 3);
@@ -319,7 +338,13 @@ void PoissonImageCloning(
 
     cudaMemcpy(output, background, wb*hb*sizeof(float)*3, cudaMemcpyDeviceToDevice);
 
-    SimpleClone<<<gdim[testLimit - 1], bdim>>>(
+    if(start == 3 && testLimit == 4) 
+	SimpleClone<<<gdim[3], bdim>>>(
+            background, buf1, mask, output,
+            wb, hb, wt, ht, oy, ox
+            );
+    else 
+	SimpleClone<<<gdim[testLimit - 1], bdim>>>(
             background, buf1, tempMask, output,
             wb, hb, wt/scale, ht/scale, oy, ox
             );
